@@ -5,7 +5,7 @@ _Anatomy of the Bot Framework. The purposes of this project is to describe the d
 The Bot Framework v4 changed significantly from the previous version, v3.
 
 Bot Framework v3 was great -- it was clear, easy to set up, and easy to use!
-However, it was pretty opinionated and trying to do custom things sometimes felt like "swimming upstream" or "fighting the framework".
+However, it was pretty opinionated and trying to do custom things sometimes felt like "swimming upstream".
 
 The Bot Framework v4 is different.  I think of the Bot Framework v4 as the Bot Framework "deconstructed" -- 
 the team took what was once simple but blackboxed, and exposed a lot of the moving pieces -- giving you flexibility and a logical place to add custom code.
