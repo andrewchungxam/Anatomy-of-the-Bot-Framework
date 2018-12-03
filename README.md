@@ -38,7 +38,7 @@ Most of your interactions will be messages back and forth between your Bot and t
 
 When you hear the term Bot - it generally refers to the services that responds to users (including your code), the various backend services your Bot calls out to, and its expression in the channel.
 
-However, in the anatomy of your Bot project app there will be a class where the heart of your of Bot will live; it will be a class that subclasses the IBot class.  This will typically be the main "control" point of your Bot.
+However, in the anatomy of your Bot project app there will be a class where the heart of your of Bot will live; it will be a class that implmements the IBot interface.  This will typically be the main "control" point of your Bot.
 
 Take a look at this simplified IBot class:
 ```
@@ -54,33 +54,171 @@ public class SimplifiedEchoBot : IBot
   }
 }
 ```
+This SimplifiedEchoBot implements the IBot interface and has the important OnTurnAsync method which is what your Bot is going to do each time it receives an activity like a message from a user.  For each Activity received  (activity being a person or a bot joins the conversation or the person sends a message), a new instance of this class is created. Objects that are expensive to construct, or have a lifetime beyond the single turn, should be carefully managed.
+
+For each user interaction, an instance of this class is created and the OnTurnAsync method is called.  This is a Transient lifetime service.  Transient lifetime services are created each time they're requested.  So the main "control point" of your Bot will be from this OnTurn method.
+
 ### 3) Dialogs
 
+Now we have an IBot class which is the main "control point" of your Bot; how then do you code & structure the various conversations that your bot will have?
+
+This is where "dialogs" come in. Dialogs are simply managed conversation flows in code. 
+
+They are "managed" meaning that you define via code the back-and-forth interaction with the user with things like text prompts, clickable choices, or pre-defined series of steps (waterfall).
+
+This requires you to pre-program the dialog. Does that sound too rigid? You can define multiple dialogs and appropriately trigger the right dialog.
+
+Dialogs live in a stack.  The top dialog is the one being interacted with and so by changing what is on the stack or which ones is the top dialog is how you control the conversation. (ie. you can pop off all dialogs from the stack or you can replace the top dialog on the stack.)
+
+Before you use any dialog, you have to let the Bot know which dialogs are available and put them in a set. 
+
+In the constructor of your Bot, you'll have a DialogSet and you'll add the Dialogs to that DialogSet. You'll see the DialogSet being defined.  You'll also see a dialogContext being created from that dialog set which helps figure out which dialog is on top of the stack, and which dialogs are active etc etc.
+
+```
+public class DialogueBotWithAccessor : IBot
+{
+  private readonly DialogSet _dialogSet;
+  private readonly DialogueBotConversationStateAccessor _accessors;
+
+  public DialogueBotWithAccessor(DialogueBotConversationStateAccessor accessors)
+  {
+    _accessors = accessors ?? throw new ArgumentNullException(nameof(accessors));
+    _dialogSet = new DialogSet(_accessors.ConversationDialogState);
+    _dialogSet.Add(new TextPrompt("name"));
+  }
+  ...
+```
 
 ### 4) Middleware
 
+What is Middleware?  Think of it as a place in your project where you can add custom code before *and* after your bot processes a message. (Almost like global event handling.)  It's custom - so it can be anything you'd need but example functionality can include logging messages, listening for specific phrases, and running messages through APIs like sentiment using Azure's Text Analysis.
+
+Timing-wise when does the Middleware get triggered?  <br />The below diagram shows you generally how turns function: <br/>
+
+| Read Left to Right|-->|-->|-->|--> | 
+| :-------------: | :-------------:| :-----:|:-------------:| :-----:|
+| User sends message&nbsp; &nbsp;&nbsp;| Middleware 1 | Middleware 2 | Middleware 3  | OnTurnAsync() called |
+
+
+| <--           | <--           | <--   |  <--  | Read Right To Left       |
+| :-------------: |:---------------:|:-------:|:-------:|:--------------------------:|
+| User receives message| Middleware 1 | Middleware 2 | Middleware 3 | OnTurnAsync() called |
 
 ### 5) Accessor
+
+So we talked about your Bot class (the class that implements the IBot interface) being instantiated on each turn (or each time an activity is received.)  And we read that object that have a lifetime beyond the single turn, should be carefully managed.
+
+So what we need is persistance that lives beyond the turn and we need a way to access that persisted data - ie. the Accessor. 
+
+To make the "anatomy" of the problem clear -- suppose you were to create a Dialog without using persistance or accessors to access the persisted data.  In order to initiate the Dialog, you needed to create a DialogSet and DialogContext (without the appropriate persistance).  So each time the control flow happened: User input --> middleware --> Bot  --> Dialog the Bot was be re-instanced and we would lose any turn-to-turn information. (ie. Nothing would be persisted and would actually repeat the first step over and over.)
+
+To fix this, we need to create persistance to the conversation and accessors to access the persisted data.
+
+Such an example exists here that go from a Dialog Without Accessor to one with an Accessor:
+Dialog Without Accessor:https://github.com/andrewchungxam/Mechanics-of-the-Bot-Framework-v4/tree/master/DialogWithoutAccessorBotV4 <br />
+Dialog With Accessor: https://github.com/andrewchungxam/Mechanics-of-the-Bot-Framework-v4/tree/master/DialogWithAccessorBotV4 <br />
+
+Here are the important stages of the transformation.  There are three example files that can be helpful that you can reference with the below explainations:<br />
+
+Accessors class:
+https://github.com/andrewchungxam/Mechanics-of-the-Bot-Framework-v4/blob/master/DialogWithAccessorBotV4/BotAccessor/DialogueBotConversationStateAccessor.cs <br />
+
+IBot class with appropriate Accessors:
+https://github.com/andrewchungxam/Mechanics-of-the-Bot-Framework-v4/blob/master/DialogWithAccessorBotV4/Bots/DialogsWithAccessor.cs <br />
+
+Startup.cs where you can initialize options including storage, accessors, and middleware:
+https://github.com/andrewchungxam/Mechanics-of-the-Bot-Framework-v4/blob/master/DialogWithAccessorBotV4/Startup.cs <br />
+
+
+
+CREATING PERSISTANCE + ACCESSORS:<br/>
+Keeping track of the dialog state requires a "chain" of pieces that ultimately starts with an object of type IStorage:
+> Creating a DialogSet requires a Conversational Dialog State which keeps keeps track of the order in the stack of dialogs.
+
+> Creating a DialogState requires a Conversation State which persists anything at the conversation level. (From the Conversation State, we created a property of Type DialogState.) 
+
+> Creating a Conversation State requires an object of Type IStorage. 
+
+In the Bot projects -> Startup.cs file is where we'll create persistance and give the bot access to the the accessor).<br/><br />
+We're going to add the following pieces:<br/>
+i. new MemoryStorage - this is how persistance is managed at the application level.  <br/>
+ii.  new ConversationState(memoryStorage object) added to the options<br/>
+iii. Add Singleton --> ConversationState from previous step is referenced and then added as a property to the accessor we need to create.<br/>
+iv. The accessor is called DialogBotConversationStateAccessor and if you look at the full definition of the class DialogBotConversationStateAccessor.cs it has a property called ConversationDialogState.<br/>
+```
+public IStatePropertyAccessor<DialogState> ConversationDialogState { get; set; }
+```
+So what is the <DialogState> referring to?  This is defined in the BotFramework as a stack of dialogs.
+
+This is the defintion of the DialogState.  Notice how it has a list of Dialog Instances
+```
+public class DialogState
+{    
+  public DialogState();
+  public DialogState(List<DialogInstance> stack);
+  public List<DialogInstance> DialogStack { get; }
+}
+```
+Now via dependency injection, this accessor from Startup.cs is handed off to the Bot class which is recreated each turn
+ -- this is how persistence is possible across turns.<br/><br/>
+
+USING PERSISTANCE + ACCESSORS:<br/>
+Now that we've defined and created them, let's look at how they are used -- go to file Bots > DialogueBotWithAccessor.cs
+
+i. The constructor of the Bot takes as a parameter an object of type DialogueBotConversationStateAccessor.  
+```  
+private readonly DialogSet _dialogSet;
+private readonly DialogueBotConversationStateAccessor _accessors;
+
+public DialogueBotWithAccessor(DialogueBotConversationStateAccessor accessors)
+{
+  _accessors = accessors ?? throw new ArgumentNullException(nameof(accessors));
+  _dialogSet = new DialogSet(_accessors.ConversationDialogState);
+  _dialogSet.Add(new TextPrompt("name"));
+}
+```
+This is the accessor we were setting up in Startup.cs.  The dependency injection will make sure the bot gets this each time it is instanced on each turn.
+
+Notice there is a dialogSet that is instantiated and **notice it is taking as a parameter a property from the accessor**.  As an exercise, please right click on each of the classes/properties in the constructor to familiarize yourself with the specific definitions but the main point is that it needs a persistent list of Dialog instances.
+
+Later within the OnTurn method --> from that dialogSet, we create a dialogContext
+```
+var dialogContext = await _dialogSet.CreateContextAsync(turnContext, cancellationToken);
+var dialogTurnResult = await dialogContext.ContinueDialogAsync(cancellationToken);
+```
+And from the dialogContext --> we run ContinueDialog (ie. go to the next step if it can)
+
+If that dialogStatus is Empty --> we know there wasn't a dialog called to begin with so we need to begin a new one.
+We'll define one and call one directly off that dialogContext:
+```
+dialogContext.PromptAsync(
+  "name", new PromptOptions { Prompt = MessageFactory.Text("STEP 4: This is the TextPrompt Dialog ::: PLEASE ENTER YOUR NAME.") },cancellationToken);
+
+// We had a dialog run (it was the prompt) . Now it is Complete.
+else if (dialogTurnResult.Status == DialogTurnStatus.Complete)
+{
+  // Check for a result.
+  if (dialogTurnResult.Result != null)
+  {
+  // Finish by sending a message to the user. Next time ContinueAsync is called it will return DialogTurnStatus.Empty.
+  await turnContext.SendActivityAsync(MessageFactory.Text($"THANK YOU, I HAVE YOUR NAME AS: '{dialogTurnResult.Result}'."));
+  }
+}
+```
+The final piece to the puzzle is this last call to save changes to the Conversation State which handles persistence of a conversation state object using the conversation ID
+```
+// Save changes if any into the conversation state.
+await _accessors.ConversationState.SaveChangesAsync(turnContext, false, cancellationToken);
+```
+
+
+For example, the "MemoryStorage" object and associated "IStatePropertyAccessor{T}" object that are created with a singleton lifetime.  "https://docs.microsoft.com/en-us/aspnet/core/fundamentals/dependency-injection?view=aspnetcore-2.1"/
 
 
 ### 6) Startup.cs
 
 
 
-
-
-
-* This bot takes the Echo Bot template and removes all the extraneous parts and simplifies it to the most basic part - the Bot.
-For this project - we're only going to look at the SimplifiedEchoBot.cs -- this is where your Bot "lives".  
-
-This SimplifiedEchoBot subclasses IBot and has the important OnTurnAsync method which is what your Bot is going to do each time it receives an activity like a message from a user.  OnTurn async is a transient object that gets created each time an activity is received (activity being a person or a bot joins the convo or the person sends a message.)
-
-Take a quick look look at Startup.cs --> the only thing to notice for now is this line:
-
-
-
-I recommend going through the projects in the below order:
-You'll see a list below -- then in the next section, I'll write a short summary of the main ideas presented in each project.
 
 ```
 REFERENCE PROJECTS:
@@ -153,25 +291,7 @@ Exercise:
 
 ### 2) 02 SimplifiedMiddlewareEchoBotV4
 
-This time - we've added Middleware to the bot.
 
-What is Middleware?  Think of it as a place in your project where you can add custom code before *and* after your bot processes a message.  It's custom - so it can be anything you'd need but example functionality can include logging messages, 
-listening for specific phrases, and running messages through APIs like sentiment using Azure's Text Analysis.
-
-Timing-wise when does the Middleware get triggered?  <br />The below diagram shows you generally how turns function: <br/>
-
-| Read Left to Right|-->|-->|-->|--> | 
-| :-------------: | :-------------:| :-----:|:-------------:| :-----:|
-| User sends message&nbsp; &nbsp;&nbsp;| Middleware 1 | Middleware 2 | Middleware 3  | OnTurnAsync() called |
-
-
-| <--           | <--           | <--   |  <--  | Read Right To Left       |
-| :-------------: |:---------------:|:-------:|:-------:|:--------------------------:|
-| User receives message| Middleware 1 | Middleware 2 | Middleware 3 | OnTurnAsync() called |
-
-Exercises:									
-* Middleware 3 was designed to listen for a keyword that will trigger a different control flow than the above typical pattern -- look for it and trigger it.
-* In any of the Middleware -- you'll see the await next(cancellationtoken) -- comment out that line of code and see what happens.  Can you think of times that this can be useful?
 
 ### 3) 03 WelcomeMessageWithoutAccessorBotV4
 
@@ -194,37 +314,19 @@ else if (turnContext.Activity.Type == ActivityTypes.ConversationUpdate)
 is returning true more than once  - can you figure out why?
 * Notice the welcoming message + bool flag system is not functioning correctly - can you figure out why?  We'll see examples of how to do this correctly in subsequent projects.
 
-### 4) 04 DialogWithoutAccessorBotV4
-
-Dialogs. So far we've talked about how the bot passes control from element to element (ie. middleware --> bot --> back to middleware etc.)
-Now we talk about dialogs which is where the main functionality of Bots live.
-
-DIALOG DEFINITION:<br />
-Dialogs are simply managed conversation flows in code. 
-
-They are "managed" meaning that you define via code the back and forth interaction with the user with things like text prompts, 
-clickable choices, or pre-defined series of steps (waterfall).
-
-Sound too rigid? You can define multiple dialogs and appropriately trigger the right dialog.
-
-Dialogs live in a stack.  The top dialog is the one being interacted with and so by changing what is on the stack or which ones is the top dialog is how you control the conversation. (ie. you can pop off all dialogs from the stack or you can replace the top dialog on the stack.)
-
-Before you use any dialog, you have to let the Bot know which dialogs are available and put them in a set. In the constructor of your Bot, you'll have a DialogSet and you'll add the Dialogs to that DialogSet.
-
-Look through the code, with special attention to file: DialogsWithoutAccessor.cs.  
-(Note: Lines 46-62 have been folded/if this is not reflected in your code please highlight those lines, right-click and choose 'Outlinining', and 'Hide Selection'.)
-
-You'll see the DialogSet being defined.  You'll also see a dialogContext being created from that dialog set which helps figure out which dialog is on top of the stack, and which dialogs are active etc etc.
-
-Exercises:
-* Run the sample, do you notice any repeating behavior?  Can you guess why?  An explaination is provided at the bottom of the file DialogsWithoutAccessor.cs. 
-(The explaination has been commented out and folded over at the bottom of the file).  We'll fix the "repeating behavior" problem in the next sample.
+Now the OnTurn 
 
 ### 5) 05 DialogWithAccessorBotV4
 
 In the previous project, there was no application level persistance to the DialogSet/DialogContext -- so each time the control flow happened, User input --> middleware --> Bot  --> Dialog, the Bot was be re-instanced and we lost any turn-to-turn information. (ie. Nothing was persisted.) The net result was that the bot would repeat the first step in the dialog over and over.
 
 To fix this, we need to create persistance to the conversation and accessors to access the persisted data.
+
+
+
+To make this clear -- suppose you were to create a Dialog without using persistance or accessors to access the persisted data.  In order to initiate the Dialog, you needed to create a DialogSet and DialogContext (without the appropriate persistance).  So each time the control flow happened: User input --> middleware --> Bot  --> Dialog the Bot was be re-instanced and we lost any turn-to-turn information. (ie. Nothing was persisted.) The net result was that the bot would repeat the first step in the dialog over and over.
+
+
 
 CREATING PERSISTANCE + ACCESSORS:<br/>
 Keeping track of the dialog state requires a "chain" of pieces that ultimately starts with an object of type IStorage:
