@@ -14,16 +14,69 @@ However, getting used to having all those pieces can be a lot at first.
 
 The purposes of this project is to to describe the different pieces of the Bot Framework v4.
 
----
 ```
 1) Channels
-2) Dialogs
-3) IBot
+2) IBot
+3) Dialogs
 4) Middleware
 5) Accessor
 6) Startup.cs
 ```
----
+### 1) Channels
+
+The channel is where users can interact with your Bot.  You can add Bots to Slack, Facebook messenger, Microsoft Teams, and websites.
+
+The typical interaction would be the users sending text messages, sending images, and selecting from various choice prompts buttons. The typical response from the Bot back to the user would be text, an html link of some sort, a stylized card, or a choice prompt.
+
+The *type* of a message would be ActivityTypes.Message.
+
+However, there are several different types of activities that the Bot can recognize including when a Bot joins the conversation and when a new user joins the conversation: https://github.com/Microsoft/BotBuilder/blob/master/specs/botframework-activity/botframework-activity.md
+
+Most of your interactions will be messages back and forth between your Bot and the user; however, you can make your bot respond to events (as an example, your Bot might greet your user the first time the user joins the channel.)
+
+### 2) IBot
+
+When you hear the term Bot - it generally refers to the services that responds to users (including your code), the various backend services your Bot calls out to, and its expression in the channel.
+
+However, in the anatomy of your Bot project app there will be a class where the heart of your of Bot will live; it will be a class that subclasses the IBot class.  This will typically be the main "control" point of your Bot.
+
+Take a look at this simplified IBot class:
+```
+public class SimplifiedEchoBot : IBot
+{
+  public async Task OnTurnAsync(ITurnContext turnContext, CancellationToken cancellationToken = default(CancellationToken))
+  {
+    if (turnContext.Activity.Type == ActivityTypes.Message)
+    {
+      var responseMessage1 = $"You sent '{turnContext.Activity.Text}.'";
+      await turnContext.SendActivityAsync(responseMessage1);
+    }
+  }
+}
+```
+### 3) Dialogs
+
+
+### 4) Middleware
+
+
+### 5) Accessor
+
+
+### 6) Startup.cs
+
+
+
+
+
+
+* This bot takes the Echo Bot template and removes all the extraneous parts and simplifies it to the most basic part - the Bot.
+For this project - we're only going to look at the SimplifiedEchoBot.cs -- this is where your Bot "lives".  
+
+This SimplifiedEchoBot subclasses IBot and has the important OnTurnAsync method which is what your Bot is going to do each time it receives an activity like a message from a user.  OnTurn async is a transient object that gets created each time an activity is received (activity being a person or a bot joins the convo or the person sends a message.)
+
+Take a quick look look at Startup.cs --> the only thing to notice for now is this line:
+
 
 
 I recommend going through the projects in the below order:
