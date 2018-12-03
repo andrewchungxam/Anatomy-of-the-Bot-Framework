@@ -213,6 +213,18 @@ await _accessors.ConversationState.SaveChangesAsync(turnContext, false, cancella
 Here are snippets of a sample Startup.cs class - full class here: <br />
 https://github.com/andrewchungxam/Mechanics-of-the-Bot-Framework-v4/blob/master/DialogWithAccessorBotV4/Startup.cs
 
+The main thing to note is notice where the Middleware is added:
+```
+options.Middleware.Add(new SimplifiedEchoBotMiddleware1());
+```  
+
+Notice below that the MemoryStorage and the ConversationState as described in the previous step.
+
+And finally notice how the accessors are defined and returned below the section that starts like this:
+```
+    services.AddSingleton(sp =>
+```
+
 ```
 ...
 public void ConfigureServices(IServiceCollection services)
